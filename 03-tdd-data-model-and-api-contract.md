@@ -2,133 +2,152 @@
 
 ## Database Rule
 
-Schema changes require failing repository or migration tests first.
+Schema changes require failing repository or migration tests first. In Phase 1, only create the tables and fields needed for the transfer-credit vertical slice.
 
-## Core Tables
+## Phase 1 Schema Boundary
 
-- `cases`
-- `case_inputs`
-- `documents`
-- `extractions`
-- `status_events`
-- `reviews`
-- `adapter_calls`
-- `outbox_events`
+- Keep Phase 1 to `cases` and `status_events`.
+- Do not add `documents`, `extractions`, `reviews`, `adapter_calls`, or `outbox_events` until later phases need them.
+- Do not add list endpoints, metrics endpoints, or generalized workflow tables during the first slice.
+
+## Phase 1 Minimum Tables
+
+### `cases`
+
+- `id` UUID primary key
+- `case_number` text unique not null
+- `learner_ref` text not null
+- `form_type` text not null
+- `status` text not null
+- `route` text not null
+- `route_reason` text not null
+- `request_fields_json` JSONB not null
+- `submitted_at` timestamptz not null
+- `created_at` timestamptz not null
+
+### `status_events`
+
+- `id` UUID primary key
+- `case_id` UUID not null references `cases(id)`
+- `event_type` text not null
+- `status` text not null
+- `message` text not null
+- `created_at` timestamptz not null
 
 ## Migration TDD
 
-Before creating a table, write a failing test that needs it.
+Before creating either table, write a failing repository test that needs the table and its constraints.
 
-## Phase 1 - Cases Schema
+## Phase 1 - Repository and Timeline TDD
 
 ### Red Tests
 
-- [ ] `TestCaseRepository_CreateAndGet_RoundTrip`
-- [ ] `TestCaseRepository_ListByStatus_ReturnsMatchingCases`
-- [ ] `TestCaseRepository_DuplicateIdempotencyKey_ReturnsExistingCase`
-- [ ] `TestCaseRepository_UpdateStatus_AppendsTimelineEvent`
+- [ ] `TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase`
+- [ ] `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
+- [ ] `TestCaseRepository_CreateAndTimeline_AreTransactional`
 
 ### Green Tasks
 
-- [ ] Create `cases` migration.
-- [ ] Create `status_events` migration.
-- [ ] Implement repository methods.
-- [ ] Add transaction boundary.
+- [ ] Create the `cases` migration with a unique constraint on `case_number`.
+- [ ] Create the `status_events` migration with a foreign key to `cases`.
+- [ ] Implement repository create and get-by-id methods.
+- [ ] Implement timeline read by `case_id`.
+- [ ] Wrap case creation and submitted-event insertion in one transaction.
 
 ### Refactor Tasks
 
-- [ ] Extract scan helpers.
-- [ ] Add repository test fixtures.
-- [ ] Add migration reset helper.
+- [ ] Extract row-scan helpers after the first round-trip test passes.
+- [ ] Add repository fixture builders for transfer-credit requests.
+- [ ] Add a migration reset helper for integration tests.
 
 ### Acceptance Criteria
 
 - [ ] Repository tests pass against real PostgreSQL.
-- [ ] Duplicate idempotency key is enforced by database constraint.
-- [ ] Status updates are transactional.
+- [ ] A newly created case always has one submitted timeline event.
+- [ ] Transaction rollback prevents orphaned case or timeline records.
 
 ---
-
-# Phase 2 - Documents and Extractions Schema
-
-## Red Tests
-
-- [ ] `TestDocumentRepository_SaveDocumentMetadata_PersistsHash`
-- [ ] `TestDocumentRepository_DuplicateHashForCase_FlagsDuplicate`
-- [ ] `TestExtractionRepository_SaveExtraction_PersistsFieldConfidence`
-- [ ] `TestExtractionRepository_ListByCase_ReturnsAllExtractions`
-
-## Green Tasks
-
-- [ ] Create `documents` table.
-- [ ] Create `extractions` table.
-- [ ] Add file hash field.
-- [ ] Add document quality field.
-- [ ] Add extraction confidence field.
-- [ ] Implement repositories.
-
-## Refactor Tasks
-
-- [ ] Add fixture builders.
-- [ ] Add typed confidence value.
-- [ ] Add document validation helpers.
-
-## Acceptance Criteria
-
-- [ ] Duplicate documents are testable.
-- [ ] Extraction results round-trip.
-- [ ] Field confidence is preserved.
-
----
-
-# Phase 3 - API Contract TDD
 
 ## API Contract Rule
 
-OpenAPI changes must be accompanied by failing handler tests.
+OpenAPI and handler changes must follow failing API tests. Phase 1 exposes only the transfer-credit endpoints needed by the first slice.
 
-## Endpoints
+## Phase 1 Endpoints
 
 ```text
-GET    /healthz
-GET    /readyz
-POST   /cases
-GET    /cases
-GET    /cases/{case_id}
-GET    /cases/{case_id}/timeline
-POST   /cases/{case_id}/documents
-POST   /cases/{case_id}/triage
-POST   /cases/{case_id}/reviews
-GET    /metrics/summary
+POST /cases
+GET  /cases/{case_id}/timeline
 ```
 
-## Red API Tests
+Reviewer visibility is still required in Phase 1, but it is proven through a minimal reviewer-queue query/read model exercised by the E2E harness rather than a third public endpoint.
 
-- [ ] `TestPOSTCases_ValidTransferCredit_Returns201AndCaseNumber`
-- [ ] `TestPOSTCases_MissingLearnerRef_Returns400WithFieldError`
-- [ ] `TestGETCases_WithStatusFilter_ReturnsMatchingCases`
-- [ ] `TestGETTimeline_ForNewCase_ReturnsSubmittedEvent`
-- [ ] `TestPOSTDocuments_WithUnsupportedType_Returns415`
-- [ ] `TestPOSTTriage_ForUnknownCase_Returns404`
-- [ ] `TestPOSTReviews_WithInvalidDecision_Returns400`
-- [ ] `TestGETMetricsSummary_ReturnsCounts`
+## Phase 1 Request Contract
 
-## Green Tasks
+### `POST /cases`
 
-- [ ] Implement handlers.
-- [ ] Implement request validation.
-- [ ] Implement error response format.
-- [ ] Implement response DTOs.
-- [ ] Implement pagination.
-- [ ] Implement metrics query.
-- [ ] Add OpenAPI file.
+```json
+{
+  "form_type": "transfer_credit",
+  "learner_ref": "STU-300900111",
+  "term": "Fall 2026",
+  "fields": {
+    "prior_institution": "Example University",
+    "prior_course_code": "MGMT 101",
+    "target_program": "Business Administration Diploma"
+  }
+}
+```
 
-## Refactor Tasks
+## Phase 1 Success Contract
 
-- [ ] Generate types from OpenAPI or validate DTOs against spec.
-- [ ] Add shared API test helper.
-- [ ] Add golden response tests.
-- [ ] Keep domain separate from transport DTOs.
+### `POST /cases` returns `201 Created`
+
+```json
+{
+  "case_id": "case-123",
+  "case_number": "TC-2026-0001",
+  "status": "submitted",
+  "route": "registrar_transfer_credit",
+  "route_reason": "transfer_credit_complete",
+  "timeline_url": "/cases/case-123/timeline"
+}
+```
+
+### `GET /cases/{case_id}/timeline` returns `200 OK`
+
+```json
+{
+  "case_id": "case-123",
+  "events": [
+    {
+      "event_type": "submitted",
+      "status": "submitted",
+      "message": "Transfer credit request submitted.",
+      "created_at": "2026-05-05T10:00:00Z"
+    }
+  ]
+}
+```
+
+## Phase 1 Red API Tests
+
+- [ ] `TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase`
+- [ ] `TestPOSTCases_MissingPriorInstitution_Returns400WithFieldError`
+- [ ] `TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent`
+
+## Phase 1 Green Tasks
+
+- [ ] Implement `POST /cases` with transfer-credit validation only.
+- [ ] Persist the case and submitted timeline event before returning `201`.
+- [ ] Return the deterministic route and route reason used by the reviewer queue.
+- [ ] Implement `GET /cases/{case_id}/timeline`.
+- [ ] Add a minimal OpenAPI document for these two endpoints only.
+
+## Phase 1 Refactor Tasks
+
+- [ ] Extract shared request decoding and validation helpers.
+- [ ] Keep transport DTOs separate from the domain model.
+- [ ] Add golden JSON tests for success and validation failure responses.
 
 ## Standard Error Shape
 
@@ -139,8 +158,8 @@ GET    /metrics/summary
     "message": "The request contains invalid fields.",
     "fields": [
       {
-        "name": "learner_ref",
-        "message": "learner_ref is required"
+        "name": "prior_institution",
+        "message": "prior_institution is required"
       }
     ],
     "correlation_id": "req-123"
@@ -148,80 +167,35 @@ GET    /metrics/summary
 }
 ```
 
-## Acceptance Criteria
+## Phase 1 Acceptance Criteria
 
-- [ ] Every endpoint has success and failure tests.
-- [ ] Every write endpoint creates audit or status event where appropriate.
-- [ ] API spec matches test behaviour.
-- [ ] API tests run in CI.
-
----
-
-# Phase 4 - Adapter Contract TDD
-
-## Contract Test Matrix
-
-| Adapter | Contract Scenarios |
-|---|---|
-| SIS | found, not found, unavailable, invalid learner reference |
-| CRM | create queue item, duplicate idempotency key, unavailable |
-| LMS/Notification | send success, invalid target, unavailable |
-| Knowledge | search found, no result, stale result, cited result |
-
-## Red Tests
-
-- [ ] Write adapter contract tests before mock adapters.
-- [ ] Write adapter failure tests before retry code.
-- [ ] Write redaction tests before adapter logging.
-- [ ] Write latency metric tests before instrumentation.
-
-## Green Tasks
-
-- [ ] Implement mock adapters.
-- [ ] Implement adapter call logging.
-- [ ] Implement retryable error types.
-- [ ] Implement non-retryable error types.
-
-## Refactor Tasks
-
-- [ ] Share adapter contract suite.
-- [ ] Add mock fixtures.
-- [ ] Add table-driven adapter tests.
-
-## Acceptance Criteria
-
-- [ ] Contract tests prove replaceability.
-- [ ] Mock adapters can simulate failure.
-- [ ] Domain logic depends only on interfaces.
-- [ ] Adapter calls are redacted in logs.
+- [ ] The only required write path is `POST /cases`.
+- [ ] The only required read path is `GET /cases/{case_id}/timeline`.
+- [ ] API behaviour matches the repository transaction and timeline semantics.
+- [ ] Reviewer visibility is proven through the queue query/read model used by the E2E slice.
+- [ ] API tests run in CI before any broader endpoint surface is added.
 
 ---
 
-# Phase 5 - Data Integrity TDD
+## Deferred Until After Phase 1
 
-## Red Tests
+### Later Tables
 
-- [ ] `TestIdempotencyKey_SameNormalizedInput_SameKey`
-- [ ] `TestIdempotencyKey_DifferentTerm_DifferentKey`
-- [ ] `TestStatusEvents_AreAppendOnly`
-- [ ] `TestAuditEvents_CannotBeUpdatedByRepository`
-- [ ] `TestCaseStatus_InvalidTransition_ReturnsError`
+- `documents`
+- `extractions`
+- `reviews`
+- `adapter_calls`
+- `outbox_events`
 
-## Green Tasks
+### Later Endpoints
 
-- [ ] Implement normalized idempotency key.
-- [ ] Add status transition validator.
-- [ ] Add append-only repository methods.
-- [ ] Add database constraints.
-
-## Refactor Tasks
-
-- [ ] Extract state machine.
-- [ ] Add transition table.
-- [ ] Add state machine tests.
-
-## Acceptance Criteria
-
-- [ ] Invalid transitions fail.
-- [ ] Audit/status events are append-only.
-- [ ] Idempotency is deterministic.
+```text
+GET  /healthz
+GET  /readyz
+GET  /cases
+GET  /cases/{case_id}
+POST /cases/{case_id}/documents
+POST /cases/{case_id}/triage
+POST /cases/{case_id}/reviews
+GET  /metrics/summary
+```

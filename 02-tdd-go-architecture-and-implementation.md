@@ -2,67 +2,67 @@
 
 ## Architectural Rule
 
-Architecture must emerge from tests. Start with a modular monolith and extract boundaries only when tests show a need.
+Architecture must emerge from tests. Phase 1 starts with one transfer-credit vertical slice and only the packages needed to make those failing tests pass.
 
-## Recommended Go Structure
+## Phase 1 Boundary
+
+- Build only the transfer-credit submission path.
+- Persist only the case record and its submitted timeline event.
+- Expose only the API surface needed by the Phase 1 tests.
+- Represent the reviewer queue from case status and route instead of adding a separate queue subsystem.
+- Defer duplicate detection, idempotency, and low-confidence routing until later phases.
+- Defer health/readiness hardening, adapters, outbox, metrics, and multi-workflow logic until the transfer-credit slice is green.
+
+## Recommended Go Structure for Phase 1
 
 ```text
 student-forms-orchestrator/
 ├── cmd/
-│   ├── api/
-│   └── worker/
+│   └── api/
 ├── internal/
 │   ├── cases/
-│   ├── rules/
+│   │   ├── case.go
+│   │   ├── service.go
+│   │   ├── validation.go
+│   │   ├── repository.go
+│   │   ├── service_test.go
+│   │   └── repository_integration_test.go
 │   ├── triage/
-│   ├── review/
-│   ├── audit/
-│   ├── outbox/
-│   ├── metrics/
-│   ├── adapters/
-│   │   ├── sis/
-│   │   ├── crm/
-│   │   ├── lms/
-│   │   └── knowledge/
-│   └── platform/
-│       ├── database/
-│       ├── httpserver/
-│       └── config/
+│   │   ├── decision.go
+│   │   └── decision_test.go
+│   ├── reviewerqueue/
+│   │   ├── query.go
+│   │   └── query_test.go
+│   ├── platform/
+│   │   ├── database/
+│   │   └── httpserver/
+│   │       ├── handler.go
+│   │       └── handler_integration_test.go
+│   └── testsupport/
 ├── migrations/
 ├── testdata/
-│   ├── scenarios/
-│   ├── adapters/
-│   └── evaluation/
-├── openapi/
-├── web/
+│   └── scenarios/
+├── e2e/
+│   └── transfer_credit_submission_test.go
 └── docs/
 ```
 
-## Test Structure
+## Earliest Implementation Sequence
 
-```text
-internal/cases/
-├── case.go
-├── service.go
-├── repository.go
-├── service_test.go
-├── repository_integration_test.go
-└── handler_integration_test.go
-
-internal/rules/
-├── engine.go
-├── engine_test.go
-└── guardrails_test.go
-
-internal/adapters/crm/
-├── adapter.go
-├── mock.go
-└── contract_test.go
-```
+1. Write a failing unit test for transfer-credit validation.
+2. Write a failing unit test for transfer-credit route selection.
+3. Write failing guardrail tests proving the slice never auto-approves and never auto-denies.
+4. Write a failing unit test that a complete transfer-credit input creates a submitted case.
+5. Write a failing repository integration test that creates a submitted case and timeline event.
+6. Write a failing handler integration test for `POST /cases`.
+7. Write a failing handler integration test for `GET /cases/{id}/timeline`.
+8. Write a failing reviewer-queue query test.
+9. Write a failing E2E test proving a learner submission appears in the reviewer queue.
+10. Only after those failures exist, add the smallest production code needed to pass them in order.
 
 ## Build Tags
 
-Use build tags to separate slow tests.
+Use build tags to keep slow tests explicit.
 
 ```go
 //go:build integration
@@ -72,209 +72,95 @@ Use build tags to separate slow tests.
 //go:build e2e
 ```
 
-## Phase 1 - Go Test Harness First
+## Phase 1 - Transfer Credit Vertical Slice
 
-### Red Tasks
+### Red Tests
 
-- [ ] Create failing `TestHealthz_ReturnsOK`.
-- [ ] Create failing `TestReadyz_WhenDatabaseUnavailable_ReturnsServiceUnavailable`.
-- [ ] Create failing `TestConfig_LoadsRequiredEnvironment`.
-- [ ] Create failing `TestLogger_RedactsSensitiveFields`.
+- [ ] `TestCreateTransferCreditCase_WithMissingPriorInstitution_ReturnsValidationError`
+- [ ] `TestTriageTransferCredit_WithCompleteInput_SuggestsRegistrarRoute`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoApproves`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoDenies`
+- [ ] `TestCreateTransferCreditCase_WithCompleteInput_CreatesSubmittedCase`
+- [ ] `TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase`
+- [ ] `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
+- [ ] `TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase`
+- [ ] `TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent`
+- [ ] `TestReviewerQueue_NewTransferCreditCase_IsVisibleToStaff`
+- [ ] `TestE2ETransferCreditSubmission_AppearsInReviewerQueue`
 
-### Green Tasks
+### Green Implementation
 
-- [ ] Implement HTTP server.
-- [ ] Implement health endpoint.
-- [ ] Implement readiness endpoint.
-- [ ] Implement config loader.
-- [ ] Implement logger redaction.
+- [ ] Create a minimal `Case` aggregate with `submitted` status.
+- [ ] Create `CreateInput` for transfer-credit requests only.
+- [ ] Implement validation for the required transfer-credit fields.
+- [ ] Implement a deterministic route decision that returns `registrar_transfer_credit`.
+- [ ] Implement guardrail rules that block approval or denial automation.
+- [ ] Implement a repository that writes the case row and the submitted timeline event in one transaction.
+- [ ] Implement an HTTP handler for `POST /cases`.
+- [ ] Implement an HTTP handler for `GET /cases/{id}/timeline`.
+- [ ] Implement the smallest reviewer-queue query/read model needed by the E2E test.
 
 ### Refactor Tasks
 
-- [ ] Extract server setup into testable function.
-- [ ] Add `httptest` helpers.
-- [ ] Add fake config source.
-- [ ] Add test cleanup helpers.
+- [ ] Extract `CaseService` after the first green path passes.
+- [ ] Extract validation helpers from the handler into the domain layer.
+- [ ] Extract a route decision object instead of scattering string literals.
+- [ ] Add `httptest` and database helper fixtures.
+- [ ] Convert validation and routing coverage to table-driven tests.
 
 ### Acceptance Criteria
 
-- [ ] API can be tested without starting external server.
-- [ ] Database readiness is testable.
-- [ ] Logs redact learner references.
-- [ ] Health tests pass before any feature code.
+- [ ] The transfer-credit slice passes unit, integration, and E2E tests.
+- [ ] The first reviewer-visible state is derived from `submitted` status plus `registrar_transfer_credit` route.
+- [ ] API handlers remain thin and are testable without starting a real server.
+- [ ] The slice proves no approval or denial path is automated.
+- [ ] No production code was added before its corresponding test failed.
+- [ ] Coverage for `internal/cases` is at least 90%.
 
 ---
 
-# Phase 2 - Case Service TDD
+## Phase 2 - Platform Hardening After the Slice
 
-## Red Tests
+### Red Tests
 
-- [ ] `TestCaseService_Create_WithValidTransferCreditInput_PersistsCase`
-- [ ] `TestCaseService_Create_WithMissingLearnerRef_ReturnsValidationError`
-- [ ] `TestCaseService_Create_CreatesSubmittedTimelineEvent`
-- [ ] `TestCaseService_Create_WithDuplicateIdempotencyKey_ReturnsExistingCase`
-- [ ] `TestCaseRepository_CreateAndGet_RoundTripsCase`
+- [ ] `TestHealthz_ReturnsOK`
+- [ ] `TestReadyz_WhenDatabaseUnavailable_ReturnsServiceUnavailable`
+- [ ] `TestConfig_LoadsRequiredEnvironment`
+- [ ] `TestLogger_RedactsSensitiveFields`
 
-## Green Implementation
+### Green Implementation
 
-- [ ] Create `Case` struct.
-- [ ] Create `CaseService`.
-- [ ] Create `CaseRepository` interface.
-- [ ] Create PostgreSQL repository.
-- [ ] Create validation errors.
-- [ ] Create timeline event writer.
-- [ ] Create idempotency key generator.
+- [ ] Add health and readiness endpoints after the core slice is stable.
+- [ ] Add config loading.
+- [ ] Add logger redaction.
 
-## Refactor
+## Phase 3 - Workflow Expansion
 
-- [ ] Move validation to domain package.
-- [ ] Add table-driven validation tests.
-- [ ] Add explicit error types.
-- [ ] Add fake repository for service tests.
+### Red Tests
 
-## Coverage Gate
+- [ ] `TestCreatePrerequisiteWaiverCase_WithMissingCourseCode_ReturnsValidationError`
+- [ ] `TestCreateRefundWithdrawalCase_WithMissingReason_ReturnsValidationError`
+- [ ] `TestTriageUnknownRequest_RoutesToManualReview`
 
-- [ ] `internal/cases` coverage >= 90%.
+### Green Implementation
 
----
+- [ ] Add multi-workflow validation and routing.
+- [ ] Keep transfer-credit tests passing unchanged.
 
-# Phase 3 - Rule Engine TDD
+## Phase 4 - Adapters and Outbox
 
-## Red Tests
+### Rule
 
-- [ ] `TestRuleEngine_TransferCreditComplete_ReturnsRouteReady`
-- [ ] `TestRuleEngine_TransferCreditMissingTranscript_ReturnsNeedsMoreInfo`
-- [ ] `TestRuleEngine_PrereqWaiverMissingCourseCode_ReturnsNeedsMoreInfo`
-- [ ] `TestRuleEngine_RefundOutcomeQuestion_RequiresHumanReview`
-- [ ] `TestRuleEngine_LowConfidence_RequiresHumanReview`
-- [ ] `TestRuleEngine_ApprovalRequest_NeverAutoApproves`
-- [ ] `TestRuleEngine_DenialRequest_NeverAutoDenies`
+Every adapter or worker component needs a failing contract or integration test before implementation.
 
-## Green Implementation
+### Red Tests
 
-- [ ] Create rule input type.
-- [ ] Create rule result type.
-- [ ] Add required field rules.
-- [ ] Add confidence threshold rule.
-- [ ] Add adverse decision guardrail.
-- [ ] Add route map.
-- [ ] Add missing information result.
-
-## Refactor
-
-- [ ] Convert rules to composable functions.
-- [ ] Add rule names and reason codes.
-- [ ] Add shared test fixture builder.
-- [ ] Keep rule engine deterministic.
-
-## Coverage Gate
-
-- [ ] `internal/rules` coverage >= 95%.
-
----
-
-# Phase 4 - Adapter TDD
-
-## Rule
-
-Every adapter must have a contract test before implementation.
-
-## Red Tests
-
-- [ ] `TestSISContract_GetStudent_Found`
-- [ ] `TestSISContract_GetStudent_NotFound`
-- [ ] `TestSISContract_GetStudent_Unavailable`
 - [ ] `TestCRMContract_CreateQueueItem_Success`
-- [ ] `TestCRMContract_CreateQueueItem_DuplicateIdempotencyKey`
-- [ ] `TestLMSContract_SendStatusUpdate_Success`
-- [ ] `TestKnowledgeContract_Search_ReturnsCitedSnippets`
-
-## Green Implementation
-
-- [ ] Define interfaces.
-- [ ] Implement mock SIS.
-- [ ] Implement mock CRM.
-- [ ] Implement mock LMS.
-- [ ] Implement mock knowledge adapter.
-- [ ] Implement adapter call logging.
-- [ ] Implement error types.
-
-## Refactor
-
-- [ ] Extract shared adapter test suite.
-- [ ] Add fake latency support.
-- [ ] Add fake failure support.
-- [ ] Keep domain independent of adapter implementations.
-
-## Coverage Gate
-
-- [ ] Adapter contract tests pass.
-- [ ] Adapter package coverage >= 90%.
-
----
-
-# Phase 5 - API Handler TDD
-
-## Red Tests
-
-- [ ] `TestPOSTCases_WithValidInput_ReturnsCreated`
-- [ ] `TestPOSTCases_WithInvalidInput_ReturnsBadRequest`
-- [ ] `TestGETCase_WithExistingCase_ReturnsCase`
-- [ ] `TestGETTimeline_WithExistingCase_ReturnsEvents`
-- [ ] `TestPOSTReview_WithReviewerDecision_UpdatesCaseStatus`
-- [ ] `TestPOSTTriage_WithExistingCase_ReturnsTriageResult`
-
-## Green Implementation
-
-- [ ] Add routes.
-- [ ] Add request DTOs.
-- [ ] Add response DTOs.
-- [ ] Add validation.
-- [ ] Add error mapping.
-- [ ] Add correlation ID.
-- [ ] Add JSON response helpers.
-
-## Refactor
-
-- [ ] Extract handler dependencies.
-- [ ] Add handler test helpers.
-- [ ] Add OpenAPI consistency checks.
-- [ ] Keep handlers thin.
-
-## Coverage Gate
-
-- [ ] Handler coverage >= 80%.
-- [ ] All API tests pass with race detector where possible.
-
----
-
-# Phase 6 - Worker and Outbox TDD
-
-## Red Tests
-
 - [ ] `TestOutbox_OnCaseCreated_StoresPendingEvent`
 - [ ] `TestWorker_ProcessPendingRouteEvent_CreatesCRMQueueItem`
-- [ ] `TestWorker_WhenAdapterFails_RetriesEvent`
-- [ ] `TestWorker_AfterMaxRetries_MarksDeadLetter`
-- [ ] `TestWorker_ReprocessingSameEvent_IsIdempotent`
 
-## Green Implementation
+### Green Implementation
 
-- [ ] Add outbox repository.
-- [ ] Add event publisher.
-- [ ] Add worker loop.
-- [ ] Add retry policy.
-- [ ] Add dead-letter state.
-- [ ] Add idempotency check.
-
-## Refactor
-
-- [ ] Add fake clock.
-- [ ] Add deterministic worker tests.
-- [ ] Separate polling from processing.
-- [ ] Extract retry calculator.
-
-## Coverage Gate
-
-- [ ] Outbox package coverage >= 90%.
-- [ ] Integration tests pass.
+- [ ] Add mock CRM adapter.
+- [ ] Add outbox persistence.
+- [ ] Add worker processing.

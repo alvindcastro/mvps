@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: Student Forms Triage and Status Orchestrator Phase 1 API
+  version: 0.1.0
+paths:
+  /cases:
+    post:
+      summary: Create a transfer-credit case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCaseRequest'
+      responses:
+        '201':
+          description: Case created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCaseResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /cases/{case_id}/timeline:
+    get:
+      summary: Fetch the learner timeline for a case
+      parameters:
+        - in: path
+          name: case_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Timeline found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimelineResponse'
+        '404':
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CreateCaseRequest:
+      type: object
+      required:
+        - form_type
+        - learner_ref
+        - term
+        - fields
+      properties:
+        form_type:
+          type: string
+          const: transfer_credit
+        learner_ref:
+          type: string
+        term:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+    CreateCaseResponse:
+      type: object
+      required:
+        - case_id
+        - case_number
+        - status
+        - route
+        - route_reason
+        - timeline_url
+      properties:
+        case_id:
+          type: string
+        case_number:
+          type: string
+        status:
+          type: string
+        route:
+          type: string
+        route_reason:
+          type: string
+        timeline_url:
+          type: string
+    TimelineResponse:
+      type: object
+      required:
+        - case_id
+        - events
+      properties:
+        case_id:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimelineEvent'
+    TimelineEvent:
+      type: object
+      required:
+        - event_type
+        - status
+        - message
+        - created_at
+      properties:
+        event_type:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - correlation_id
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            correlation_id:
+              type: string
+            fields:
+              type: array
+              items:
+                type: object
+                required:
+                  - name
+                  - message
+                properties:
+                  name:
+                    type: string
+                  message:
+                    type: string

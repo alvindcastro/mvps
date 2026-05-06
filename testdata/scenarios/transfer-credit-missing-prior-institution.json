@@ -1,0 +1,16 @@
+{
+  "learner_ref": "STU-300900112",
+  "term": "Fall 2026",
+  "form_type": "transfer_credit",
+  "fields": {
+    "prior_course_code": "MGMT 101",
+    "target_program": "Business Administration Diploma"
+  },
+  "expected_route": null,
+  "expected_route_reason": null,
+  "expected_missing_fields": [
+    "prior_institution"
+  ],
+  "expected_timeline_events": [],
+  "expected_guardrail_outcome": null
+}
