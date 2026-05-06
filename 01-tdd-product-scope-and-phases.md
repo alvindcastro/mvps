@@ -4,6 +4,14 @@
 
 **Student Forms Triage and Status Orchestrator**
 
+## Current Repo Focus
+
+The repo is currently aligned around a single executable slice:
+
+- Phase 1 builds transfer-credit only.
+- Phase 1 is the default demo path for the repo.
+- Prerequisite waiver and refund/withdrawal remain Phase 2 work.
+
 ## Strict TDD Product Rule
 
 Every product behaviour must be described as an executable test before implementation.
@@ -39,6 +47,17 @@ And no approval decision is made
 - PostgreSQL
 - Docker Compose
 - CI test gates
+
+## Phase 1 Scope Boundary
+
+For Phase 1, only these outcomes must work end to end:
+
+- Create a transfer-credit case from a synthetic learner submission
+- Validate required transfer-credit fields
+- Suggest `registrar_transfer_credit`
+- Persist the case and initial timeline event
+- Show the case in a reviewer queue
+- Show the learner-facing submitted status timeline
 
 ## Out of Scope
 
@@ -117,6 +136,44 @@ Convert the MVP idea into behaviours that can be tested.
 
 Build one end-to-end workflow strictly through failing tests.
 
+## Canonical Phase 1 Scenario
+
+```text
+Given a complete transfer-credit request
+When the learner submits the form
+Then the system creates a case
+And the case is routed to registrar_transfer_credit
+And the reviewer queue shows the case
+And the learner sees a submitted status timeline
+And no approval or denial decision is made
+```
+
+## Explicit Deliverables
+
+### Product Deliverables
+
+- [ ] One canonical transfer-credit scenario is documented and treated as the Phase 1 demo path.
+- [ ] Phase 1 scope boundary is documented and excludes other workflow types.
+- [ ] Acceptance criteria name the exact behaviours required to demo the slice.
+- [ ] README points to the same Phase 1 demo path.
+
+### Test Deliverables
+
+- [ ] Failing unit tests exist for validation and routing before implementation.
+- [ ] Failing persistence and API tests exist before implementation.
+- [ ] Failing E2E test exists for learner submission through reviewer visibility.
+- [ ] Test fixtures use synthetic transfer-credit data only.
+- [ ] Guardrail tests prove no auto-approval and no auto-denial on the slice.
+
+### Slice Deliverables
+
+- [ ] Minimal transfer-credit case model exists.
+- [ ] Minimal validation for required fields exists.
+- [ ] Minimal route suggestion exists for `registrar_transfer_credit`.
+- [ ] Minimal case creation endpoint exists.
+- [ ] Minimal learner timeline endpoint exists.
+- [ ] Minimal reviewer queue view/query exists.
+
 ## Red Tests First
 
 - [ ] Write failing unit test for transfer-credit validation.
@@ -142,6 +199,17 @@ Build one end-to-end workflow strictly through failing tests.
 - [ ] Extract route decision object.
 - [ ] Remove duplication in test fixtures.
 - [ ] Add table-driven tests.
+
+## Phase 1 Exit Checklist
+
+- [ ] A synthetic learner can submit a complete transfer-credit request.
+- [ ] The case is stored once and has a stable identifier.
+- [ ] The route suggestion is `registrar_transfer_credit`.
+- [ ] The initial timeline contains a submitted event.
+- [ ] The reviewer queue can surface the submitted case.
+- [ ] Missing required fields produce a test-covered validation failure.
+- [ ] The slice has no approval or denial automation.
+- [ ] README and this file describe the same Phase 1 demo path.
 
 ## Phase 1 Acceptance Criteria
 

@@ -24,7 +24,62 @@ Not allowed:
 - Decide eligibility
 - Process real student data
 
-## Phase 1 - Deterministic Classifier First
+## Phase 1 - Transfer Credit Deterministic Routing Slice
+
+### Scope Rule
+
+Phase 1 starts from the transfer-credit submission path, not from open-ended classification.
+
+The first runnable slice must prove deterministic routing, completeness checks, duplicate handling, and no-decision guardrails from structured transfer-credit input plus labelled fixtures.
+
+### Route Outcomes Allowed in Phase 1
+
+| Condition | Expected Action |
+|---|---|
+| Complete transfer-credit request | Route to `registrar_transfer_credit` |
+| Missing required field | Return `needs_more_information` |
+| Conflicting entered and extracted values | Return `human_review_required` |
+| Unsupported or low-confidence extraction | Return `manual_triage` |
+| Learner asks for approval, denial, or outcome | Return `human_review_required` |
+| Duplicate submission | Return existing case |
+
+### Red Tests
+
+- [ ] `TestTransferCreditTriage_CompleteStructuredInput_SuggestsRegistrarTransferCredit`
+- [ ] `TestTransferCreditTriage_MissingPriorInstitution_ReturnsNeedsMoreInformation`
+- [ ] `TestTransferCreditTriage_MissingPriorCourseCode_ReturnsNeedsMoreInformation`
+- [ ] `TestTransferCreditTriage_ConflictingCourseCode_RequiresHumanReview`
+- [ ] `TestTransferCreditTriage_UnsupportedInstitutionMapping_RoutesManualTriage`
+- [ ] `TestTransferCreditTriage_AdverseDecisionRequest_RequiresHumanReview`
+- [ ] `TestTransferCreditTriage_DuplicateSubmission_ReturnsExistingCase`
+
+### Green Tasks
+
+- [ ] Define deterministic `TransferCreditTriageInput`.
+- [ ] Implement required-field checks for transfer credit.
+- [ ] Implement deterministic route decision rules.
+- [ ] Implement guardrail rules for no auto-approval and no auto-denial.
+- [ ] Return route reason codes and missing-field list.
+- [ ] Return a reviewer-safe explanation for every non-happy-path result.
+
+### Refactor Tasks
+
+- [ ] Convert transfer-credit rules to table-driven fixtures.
+- [ ] Extract guardrail policy from route policy.
+- [ ] Add reusable structured-input fixture builders.
+- [ ] Add route matrix tests for all Phase 1 outcomes.
+
+### Acceptance Criteria
+
+- [ ] A complete transfer-credit request deterministically routes to `registrar_transfer_credit`.
+- [ ] Missing information never reaches the happy-path queue.
+- [ ] Conflicts and learner-impacting outcomes always require human review.
+- [ ] Duplicate detection returns the existing case rather than creating a new route.
+- [ ] No live model is required for CI or the first demo slice.
+
+---
+
+## Phase 2 - Workflow Classification Expansion
 
 ### Red Tests
 
@@ -37,10 +92,10 @@ Not allowed:
 ### Green Tasks
 
 - [ ] Implement classifier interface.
-- [ ] Implement keyword classifier.
+- [ ] Implement deterministic keyword classifier.
 - [ ] Return confidence score.
 - [ ] Return reason codes.
-- [ ] Return suggested route.
+- [ ] Return a workflow suggestion without bypassing Phase 1 guardrails.
 
 ### Refactor Tasks
 
@@ -53,10 +108,11 @@ Not allowed:
 - [ ] Baseline classifier passes all tests.
 - [ ] Unknown requests safely route to manual review.
 - [ ] Confidence is explainable.
+- [ ] Transfer-credit routing continues to pass unchanged.
 
 ---
 
-# Phase 2 - Extraction TDD
+## Phase 3 - Extraction TDD
 
 ## Red Tests
 
@@ -86,10 +142,11 @@ Not allowed:
 - [ ] Extraction is deterministic in tests.
 - [ ] Missing fields are explicit.
 - [ ] Conflicts trigger human review.
+- [ ] Phase 1 transfer-credit routing still remains deterministic.
 
 ---
 
-# Phase 3 - LLM Provider Behind Tests
+## Phase 4 - LLM Provider Behind Tests
 
 ## Red Tests
 
@@ -121,12 +178,13 @@ Not allowed:
 - [ ] Redaction happens before provider call.
 - [ ] Prompt version is logged.
 - [ ] Live model is not required for CI.
+- [ ] The deterministic Phase 1 path remains the default fallback.
 
 ---
 
-# Phase 4 - Routing Rules TDD
+## Phase 5 - Cross-Workflow Routing Rules TDD
 
-## Routing Thresholds
+### Routing Thresholds After Phase 1
 
 | Condition | Expected Action |
 |---|---|
@@ -150,7 +208,7 @@ Not allowed:
 
 ## Green Tasks
 
-- [ ] Implement route decision engine.
+- [ ] Implement route decision engine across workflows.
 - [ ] Implement confidence thresholds.
 - [ ] Implement completeness rules.
 - [ ] Implement conflict rules.
@@ -164,13 +222,13 @@ Not allowed:
 - [ ] Add route reason code constants.
 - [ ] Add route matrix tests.
 
-## Coverage Gate
+### Coverage Gate
 
 - [ ] Routing package coverage >= 95%.
 
 ---
 
-# Phase 5 - Evaluation-Driven TDD
+## Phase 6 - Evaluation-Driven TDD
 
 ## Evaluation Dataset
 

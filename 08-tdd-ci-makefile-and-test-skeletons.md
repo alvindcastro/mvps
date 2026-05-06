@@ -1,40 +1,46 @@
 # 08 - TDD CI, Makefile, and Go Test Skeletons
 
-## Makefile Targets
+## Phase 1 CI Rule
+
+CI for the first implementation slice must prove the transfer-credit workflow from red tests to green tests before broader suites are added. In Phase 1, prioritize unit, integration, and E2E support for the transfer-credit path only.
+
+## Phase 1 Makefile Targets
 
 ```makefile
-.PHONY: test test-unit test-integration test-contract test-e2e coverage eval race lint ci
-
-test:
-	go test ./...
+.PHONY: test-unit test-integration test-e2e test-phase1 coverage-case-domain coverage-phase1 lint ci
 
 test-unit:
-	go test ./internal/...
+	go test ./internal/cases ./internal/triage ./internal/platform/httpserver
 
 test-integration:
-	go test -tags=integration ./...
-
-test-contract:
-	go test -tags=contract ./...
+	go test -tags=integration ./internal/cases ./internal/platform/httpserver
 
 test-e2e:
-	go test -tags=e2e ./...
+	go test -tags=e2e ./e2e/...
 
-coverage:
-	go test ./... -coverprofile=coverage.out
+test-phase1: test-unit test-integration test-e2e
+
+coverage-case-domain:
+	go test ./internal/cases -coverprofile=coverage-cases.out
+	go tool cover -func=coverage-cases.out
+
+coverage-phase1:
+	go test ./internal/cases ./internal/triage ./internal/platform/httpserver -coverprofile=coverage.out
 	go tool cover -func=coverage.out
-
-race:
-	go test -race ./...
-
-eval:
-	go test -tags=evaluation ./internal/evaluation/...
 
 lint:
 	golangci-lint run
 
-ci: lint test test-integration test-contract coverage eval
+ci: lint test-phase1 coverage-case-domain coverage-phase1
 ```
+
+## Phase 1 Pipeline Order
+
+1. Run unit tests for transfer-credit validation and route selection.
+2. Run integration tests for repository persistence and API handlers.
+3. Run the E2E learner-submission-to-reviewer-queue test.
+4. Run the `internal/cases` coverage gate at 90% or better.
+5. Run the overall slice coverage gate after the workflow is green.
 
 ## Coverage Gate Script
 
@@ -42,10 +48,32 @@ ci: lint test test-integration test-contract coverage eval
 #!/usr/bin/env bash
 set -euo pipefail
 
-go test ./... -coverprofile=coverage.out
+go test ./internal/cases ./internal/triage ./internal/platform/httpserver -coverprofile=coverage.out
 coverage=$(go tool cover -func=coverage.out | awk '/total:/ {print substr($3, 1, length($3)-1)}')
 
 required=85
+
+awk -v coverage="$coverage" -v required="$required" 'BEGIN {
+  if (coverage < required) {
+    printf("coverage %.2f is below required %.2f\n", coverage, required)
+    exit 1
+  }
+  printf("coverage %.2f meets required %.2f\n", coverage, required)
+}'
+```
+
+## Case Domain Coverage Gate
+
+Use a separate package gate for the Phase 1 case domain.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+go test ./internal/cases -coverprofile=coverage-cases.out
+coverage=$(go tool cover -func=coverage-cases.out | awk '/total:/ {print substr($3, 1, length($3)-1)}')
+
+required=90
 
 awk -v coverage="$coverage" -v required="$required" 'BEGIN {
   if (coverage < required) {
@@ -67,7 +95,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  phase1-transfer-credit:
     runs-on: ubuntu-latest
 
     services:
@@ -95,19 +123,22 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run unit tests
+      - name: Lint
+        run: make lint
+
+      - name: Run transfer-credit unit tests
         run: make test-unit
 
-      - name: Run integration tests
+      - name: Run transfer-credit integration tests
         run: make test-integration
 
-      - name: Run contract tests
-        run: make test-contract
+      - name: Run transfer-credit E2E tests
+        run: make test-e2e
 
-      - name: Run evaluation gates
-        run: make eval
+      - name: Run case domain coverage gate
+        run: ./scripts/check-case-domain-coverage.sh
 
-      - name: Run coverage gate
+      - name: Run slice coverage gate
         run: ./scripts/check-coverage.sh
 ```
 
@@ -115,7 +146,7 @@ jobs:
 
 # Go Test Skeletons
 
-## Case Service Test
+## Validation Test
 
 ```go
 package cases_test
@@ -127,75 +158,95 @@ import (
     "github.com/yourname/student-forms-orchestrator/internal/cases"
 )
 
-func TestCaseService_Create_WithValidTransferCreditInput_PersistsCase(t *testing.T) {
+func TestCreateTransferCreditCase_WithMissingPriorInstitution_ReturnsValidationError(t *testing.T) {
     t.Parallel()
 
     repo := cases.NewFakeRepository()
     svc := cases.NewService(repo)
 
-    input := cases.CreateInput{
+    _, err := svc.Create(context.Background(), cases.CreateInput{
         LearnerRef: "STU-300900111",
         FormType:   "transfer_credit",
+        Term:       "Fall 2026",
+        Fields: map[string]string{
+            "prior_course_code": "MGMT 101",
+            "target_program":    "Business Administration Diploma",
+        },
+    })
+
+    if err == nil {
+        t.Fatal("expected validation error")
+    }
+}
+```
+
+## Route Decision Test
+
+```go
+package triage_test
+
+import (
+    "testing"
+
+    "github.com/yourname/student-forms-orchestrator/internal/triage"
+)
+
+func TestTriageTransferCredit_WithCompleteInput_SuggestsRegistrarRoute(t *testing.T) {
+    t.Parallel()
+
+    result := triage.DecideTransferCreditRoute(triage.Input{
+        LearnerRef: "STU-300900111",
         Term:       "Fall 2026",
         Fields: map[string]string{
             "prior_institution": "Example University",
             "prior_course_code": "MGMT 101",
             "target_program":    "Business Administration Diploma",
         },
-    }
+    })
 
-    got, err := svc.Create(context.Background(), input)
+    if result.Route != "registrar_transfer_credit" {
+        t.Fatalf("expected registrar_transfer_credit, got %s", result.Route)
+    }
+}
+```
+
+## Repository Integration Test
+
+```go
+//go:build integration
+
+package cases_test
+
+import (
+    "context"
+    "testing"
+
+    "github.com/yourname/student-forms-orchestrator/internal/cases"
+)
+
+func TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase(t *testing.T) {
+    t.Parallel()
+
+    repo := cases.NewTestRepository(t)
+
+    got, err := repo.Create(context.Background(), cases.CreateParams{
+        LearnerRef: "STU-300900111",
+        FormType:   "transfer_credit",
+        Status:     "submitted",
+        Route:      "registrar_transfer_credit",
+    })
+
     if err != nil {
         t.Fatalf("Create returned error: %v", err)
     }
 
-    if got.CaseID == "" {
-        t.Fatal("expected case id")
-    }
-
-    if got.Status != cases.StatusSubmitted {
+    if got.Status != "submitted" {
         t.Fatalf("expected submitted status, got %s", got.Status)
     }
 }
 ```
 
-## Rule Engine Test
-
-```go
-package rules_test
-
-import (
-    "testing"
-
-    "github.com/yourname/student-forms-orchestrator/internal/rules"
-)
-
-func TestRuleEngine_ApprovalRequest_NeverAutoApproves(t *testing.T) {
-    t.Parallel()
-
-    engine := rules.NewEngine()
-
-    result := engine.Evaluate(rules.Input{
-        FormType:   "transfer_credit",
-        Confidence: 0.99,
-        Text:       "Can you approve my transfer credit now?",
-        Fields: map[string]string{
-            "prior_institution": "Example University",
-            "prior_course_code": "MGMT 101",
-        },
-    })
-
-    if !result.RequiresHumanReview {
-        t.Fatal("expected human review for approval request")
-    }
-
-    if result.FinalDecisionMade {
-        t.Fatal("system must not make final learner-affecting decision")
-    }
-}
-```
-
-## Handler Test
+## Handler Integration Test
 
 ```go
 package api_test
@@ -209,7 +260,7 @@ import (
     "github.com/yourname/student-forms-orchestrator/internal/platform/httpserver"
 )
 
-func TestPOSTCases_WithValidInput_ReturnsCreated(t *testing.T) {
+func TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase(t *testing.T) {
     t.Parallel()
 
     srv := httpserver.NewTestServer(t)
@@ -220,7 +271,8 @@ func TestPOSTCases_WithValidInput_ReturnsCreated(t *testing.T) {
       "term": "Fall 2026",
       "fields": {
         "prior_institution": "Example University",
-        "prior_course_code": "MGMT 101"
+        "prior_course_code": "MGMT 101",
+        "target_program": "Business Administration Diploma"
       }
     }`)
 
@@ -236,134 +288,72 @@ func TestPOSTCases_WithValidInput_ReturnsCreated(t *testing.T) {
 }
 ```
 
-## Adapter Contract Test
+## Timeline Handler Test
 
 ```go
-package crm_contract_test
+package api_test
 
 import (
-    "context"
+    "net/http"
+    "net/http/httptest"
     "testing"
 
-    "github.com/yourname/student-forms-orchestrator/internal/adapters/crm"
+    "github.com/yourname/student-forms-orchestrator/internal/platform/httpserver"
 )
 
-func TestCRMContract_CreateQueueItem_Success(t *testing.T) {
+func TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent(t *testing.T) {
     t.Parallel()
 
-    adapter := crm.NewMockAdapter()
+    srv := httpserver.NewTestServerWithSubmittedCase(t)
 
-    result, err := adapter.CreateQueueItem(context.Background(), crm.QueueItemInput{
-        CaseID:         "case-123",
-        IdempotencyKey: "idem-123",
-        Route:          "registrar_transfer_credit",
-        Summary:        "Synthetic transfer credit request ready for review.",
-    })
+    req := httptest.NewRequest(http.MethodGet, "/cases/case-123/timeline", nil)
+    rr := httptest.NewRecorder()
 
-    if err != nil {
-        t.Fatalf("CreateQueueItem returned error: %v", err)
-    }
+    srv.ServeHTTP(rr, req)
 
-    if result.QueueID == "" {
-        t.Fatal("expected queue id")
+    if rr.Code != http.StatusOK {
+        t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
     }
 }
 ```
 
-## Outbox Worker Test
+## E2E Test
 
 ```go
-package outbox_test
+//go:build e2e
 
-import (
-    "context"
-    "testing"
-    "time"
+package e2e_test
 
-    "github.com/yourname/student-forms-orchestrator/internal/outbox"
-)
+import "testing"
 
-func TestWorker_WhenAdapterFails_RetriesEvent(t *testing.T) {
+func TestLearnerSubmission_TransferCredit_AppearsInReviewerQueue(t *testing.T) {
     t.Parallel()
 
-    repo := outbox.NewFakeRepository()
-    clock := outbox.NewFakeClock(time.Date(2026, 5, 5, 10, 0, 0, 0, time.UTC))
-    processor := outbox.NewFailingProcessor()
-
-    worker := outbox.NewWorker(repo, processor, clock)
-
-    eventID := repo.AddPending("case.routed", []byte(`{"case_id":"case-123"}`))
-
-    err := worker.ProcessOne(context.Background())
-    if err == nil {
-        t.Fatal("expected processing error")
-    }
-
-    event := repo.MustGet(eventID)
-    if event.AttemptCount != 1 {
-        t.Fatalf("expected attempt count 1, got %d", event.AttemptCount)
-    }
-
-    if event.Status != outbox.StatusPending {
-        t.Fatalf("expected event to be pending for retry, got %s", event.Status)
-    }
-}
-```
-
-## Evaluation Test
-
-```go
-package evaluation_test
-
-import (
-    "testing"
-
-    "github.com/yourname/student-forms-orchestrator/internal/evaluation"
-)
-
-func TestEvaluation_FalseAutoRouteRate_BelowThreshold(t *testing.T) {
-    t.Parallel()
-
-    fixtures := evaluation.LoadFixtures(t, "testdata/evaluation")
-    report := evaluation.Run(fixtures)
-
-    if report.FalseAutoRouteRate > 0.02 {
-        t.Fatalf("false auto-route rate %.2f exceeds threshold", report.FalseAutoRouteRate)
-    }
+    t.Fatal("write the red E2E test before implementing the reviewer queue path")
 }
 ```
 
 ---
 
-# Strict PR Checklist
+## Strict PR Checklist for Phase 1
 
-Every pull request must answer:
+Every pull request for the first slice must answer:
 
-- [ ] What failing test was written first?
-- [ ] What behaviour does the test prove?
-- [ ] Did the test fail before implementation?
-- [ ] What is the smallest code written to pass it?
-- [ ] What was refactored after green?
-- [ ] Are there unit tests?
-- [ ] Are there integration tests if persistence/API changed?
-- [ ] Are there contract tests if adapter changed?
-- [ ] Are there E2E tests if user journey changed?
-- [ ] Did privacy/security/accessibility guardrails pass?
-- [ ] Did coverage gate pass?
-- [ ] Was documentation updated?
+- [ ] What failing transfer-credit test was written first?
+- [ ] Did the failure happen before implementation?
+- [ ] Which layer changed: validation, routing, repository, API, or E2E path?
+- [ ] Was schema scope limited to `cases` and `status_events`?
+- [ ] Was API scope limited to `POST /cases` and `GET /cases/{id}/timeline`?
+- [ ] Did unit, integration, and E2E tests pass?
+- [ ] Did the slice coverage gate pass?
+- [ ] Were the Phase 1 docs updated?
 
-## Mutation Testing Note
+## Deferred CI Expansion
 
-For important rule and guardrail packages, consider mutation testing later.
+Add these only after the transfer-credit slice is stable:
 
-Suggested target areas:
-
-- [ ] Confidence threshold comparisons
-- [ ] No-auto-approval rule
-- [ ] No-auto-denial rule
-- [ ] Missing-field detection
-- [ ] Duplicate detection
-- [ ] Authorization checks
-- [ ] Upload allowlist
-
-Mutation testing is optional for the applicant MVP, but mentioning it in the roadmap shows quality maturity.
+- `test-contract`
+- adapter contract jobs
+- evaluation jobs
+- mutation testing
+- broader multi-workflow smoke suites

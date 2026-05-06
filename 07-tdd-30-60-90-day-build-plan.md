@@ -10,49 +10,49 @@ Every milestone starts with tests. If a task cannot be tested, rewrite it until 
 
 ## Goal
 
-Create the backend foundation and one tested transfer-credit vertical slice.
+Create one tested transfer-credit vertical slice first, then harden the platform around that slice.
 
-## Week 1 - TDD Setup
+## Week 1 - Transfer Credit Domain and Routing
 
 ### Red
 
-- [ ] Write failing health endpoint test.
-- [ ] Write failing readiness endpoint test.
-- [ ] Write failing config test.
-- [ ] Write failing logger redaction test.
-- [ ] Write failing case creation test name only if needed.
+- [ ] Write failing transfer-credit validation tests.
+- [ ] Write failing transfer-credit route tests.
+- [ ] Write failing duplicate submission test name and fixture.
+- [ ] Write failing no-auto-approval test.
+- [ ] Write failing no-auto-denial test.
 
 ### Green
 
-- [ ] Initialize Go module.
-- [ ] Implement health endpoint.
-- [ ] Implement readiness endpoint.
-- [ ] Implement config.
-- [ ] Implement logging.
+- [ ] Initialize the Go module and minimal package layout.
+- [ ] Implement transfer-credit required-field validation.
+- [ ] Implement deterministic route suggestion for `registrar_transfer_credit`.
+- [ ] Implement duplicate detection contract at the domain boundary.
+- [ ] Implement guardrail rules that force human review for approval or denial outcomes.
 
 ### Refactor
 
-- [ ] Extract server setup.
-- [ ] Add test helpers.
-- [ ] Add Makefile test targets.
-- [ ] Add CI test job.
+- [ ] Convert validation and route tests to table-driven form.
+- [ ] Add structured scenario fixtures.
+- [ ] Extract route reason codes.
+- [ ] Add initial Makefile targets for the slice.
 
 ### Done
 
-- [ ] `make test` passes.
-- [ ] Coverage report exists.
-- [ ] README documents TDD rule.
+- [ ] Transfer-credit validation and route tests pass.
+- [ ] Guardrail tests pass.
+- [ ] README documents the Phase 1 demo path.
 
 ---
 
-# Week 2 - Case Creation
+## Week 2 - Persistence, API, and Timeline
 
 ### Red
 
-- [ ] Write failing case domain validation tests.
 - [ ] Write failing case repository tests.
 - [ ] Write failing `POST /cases` API tests.
-- [ ] Write failing timeline event test.
+- [ ] Write failing `GET /cases/{id}/timeline` API test.
+- [ ] Write failing timeline event transaction test.
 
 ### Green
 
@@ -60,77 +60,78 @@ Create the backend foundation and one tested transfer-credit vertical slice.
 - [ ] Implement case repository.
 - [ ] Implement case API.
 - [ ] Implement status timeline.
+- [ ] Add `cases` and `status_events` migrations only.
 
 ### Refactor
 
 - [ ] Extract case service.
-- [ ] Add table-driven validation tests.
-- [ ] Add fixture builders.
+- [ ] Add repository and handler test helpers.
+- [ ] Add fixture builders for transfer-credit requests.
 
 ### Done
 
-- [ ] Case creation works.
-- [ ] Timeline is created.
+- [ ] Case creation works for complete transfer-credit input.
+- [ ] Timeline is created transactionally with case creation.
 - [ ] Repository integration tests pass.
 
 ---
 
-# Week 3 - Transfer Credit Rules
+## Week 3 - Reviewer Queue and E2E Slice
 
 ### Red
 
-- [ ] Write failing complete transfer-credit route test.
-- [ ] Write failing missing-field tests.
-- [ ] Write failing missing-document test.
-- [ ] Write failing no-auto-approval test.
-- [ ] Write failing no-auto-denial test.
+- [ ] Write failing reviewer queue visibility test.
+- [ ] Write failing learner-to-reviewer E2E transfer-credit test.
+- [ ] Write failing submitted-status timeline assertion in the E2E path.
+- [ ] Write failing duplicate submission API test if not already covered in Week 2.
 
 ### Green
 
-- [ ] Implement required fields.
-- [ ] Implement route suggestion.
-- [ ] Implement missing-information response.
-- [ ] Implement guardrail rules.
+- [ ] Implement the minimal reviewer queue read model.
+- [ ] Expose the queue path needed for the demo.
+- [ ] Ensure duplicate submissions return the existing case.
+- [ ] Add a minimal demo script or walkthrough data.
 
 ### Refactor
 
-- [ ] Extract rule engine.
-- [ ] Add route reason codes.
-- [ ] Add table-driven route tests.
+- [ ] Extract reviewer queue query helpers.
+- [ ] Remove duplication between API and E2E fixtures.
+- [ ] Tighten status naming across learner and reviewer views.
 
 ### Done
 
-- [ ] Rule package coverage >= 95%.
-- [ ] No-auto-decision tests pass.
+- [ ] The reviewer queue shows new transfer-credit cases.
+- [ ] The end-to-end transfer-credit workflow passes.
+- [ ] No automated approval or denial is present anywhere in the slice.
 
 ---
 
-# Week 4 - Reviewer and Demo Slice
+## Week 4 - Platform Hardening After the Slice
 
 ### Red
 
-- [ ] Write failing reviewer queue test.
-- [ ] Write failing reviewer decision test.
-- [ ] Write failing learner timeline update test.
-- [ ] Write failing E2E transfer-credit test.
+- [ ] Write failing health endpoint test.
+- [ ] Write failing readiness endpoint test.
+- [ ] Write failing config test.
+- [ ] Write failing logger redaction test.
 
 ### Green
 
-- [ ] Implement reviewer list endpoint.
-- [ ] Implement reviewer decision endpoint.
-- [ ] Update timeline on review.
-- [ ] Add minimal UI or API demo script.
+- [ ] Implement health endpoint.
+- [ ] Implement readiness endpoint.
+- [ ] Implement config loading.
+- [ ] Implement logging redaction.
 
 ### Refactor
 
-- [ ] Extract review service.
-- [ ] Add authorization placeholder tests.
-- [ ] Add demo seed data.
+- [ ] Extract server setup.
+- [ ] Add test cleanup helpers.
+- [ ] Add CI job ordering that matches the Phase 1 slice.
 
 ### 30-Day Done
 
-- [ ] One complete workflow works.
-- [ ] Tests prove the workflow.
+- [ ] One complete transfer-credit workflow works.
+- [ ] Tests prove the workflow in unit, integration, and E2E layers.
 - [ ] README has demo instructions.
 - [ ] Docker Compose starts the system.
 
