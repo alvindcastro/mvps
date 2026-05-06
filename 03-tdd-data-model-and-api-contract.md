@@ -22,7 +22,6 @@ Schema changes require failing repository or migration tests first. In Phase 1, 
 - `route` text not null
 - `route_reason` text not null
 - `request_fields_json` JSONB not null
-- `idempotency_key` text unique not null
 - `submitted_at` timestamptz not null
 - `created_at` timestamptz not null
 
@@ -44,13 +43,12 @@ Before creating either table, write a failing repository test that needs the tab
 ### Red Tests
 
 - [ ] `TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase`
-- [ ] `TestCaseRepository_DuplicateIdempotencyKey_ReturnsExistingCase`
 - [ ] `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
 - [ ] `TestCaseRepository_CreateAndTimeline_AreTransactional`
 
 ### Green Tasks
 
-- [ ] Create the `cases` migration with unique constraints on `case_number` and `idempotency_key`.
+- [ ] Create the `cases` migration with a unique constraint on `case_number`.
 - [ ] Create the `status_events` migration with a foreign key to `cases`.
 - [ ] Implement repository create and get-by-id methods.
 - [ ] Implement timeline read by `case_id`.
@@ -65,7 +63,6 @@ Before creating either table, write a failing repository test that needs the tab
 ### Acceptance Criteria
 
 - [ ] Repository tests pass against real PostgreSQL.
-- [ ] Duplicate submission protection is enforced by the database.
 - [ ] A newly created case always has one submitted timeline event.
 - [ ] Transaction rollback prevents orphaned case or timeline records.
 
@@ -81,6 +78,8 @@ OpenAPI and handler changes must follow failing API tests. Phase 1 exposes only 
 POST /cases
 GET  /cases/{case_id}/timeline
 ```
+
+Reviewer visibility is still required in Phase 1, but it is proven through a minimal reviewer-queue query/read model exercised by the E2E harness rather than a third public endpoint.
 
 ## Phase 1 Request Contract
 
@@ -134,7 +133,6 @@ GET  /cases/{case_id}/timeline
 
 - [ ] `TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase`
 - [ ] `TestPOSTCases_MissingPriorInstitution_Returns400WithFieldError`
-- [ ] `TestPOSTCases_DuplicateSubmission_ReturnsExistingCase`
 - [ ] `TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent`
 
 ## Phase 1 Green Tasks
@@ -174,6 +172,7 @@ GET  /cases/{case_id}/timeline
 - [ ] The only required write path is `POST /cases`.
 - [ ] The only required read path is `GET /cases/{case_id}/timeline`.
 - [ ] API behaviour matches the repository transaction and timeline semantics.
+- [ ] Reviewer visibility is proven through the queue query/read model used by the E2E slice.
 - [ ] API tests run in CI before any broader endpoint surface is added.
 
 ---

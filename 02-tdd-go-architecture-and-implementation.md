@@ -10,6 +10,7 @@ Architecture must emerge from tests. Phase 1 starts with one transfer-credit ver
 - Persist only the case record and its submitted timeline event.
 - Expose only the API surface needed by the Phase 1 tests.
 - Represent the reviewer queue from case status and route instead of adding a separate queue subsystem.
+- Defer duplicate detection, idempotency, and low-confidence routing until later phases.
 - Defer health/readiness hardening, adapters, outbox, metrics, and multi-workflow logic until the transfer-credit slice is green.
 
 ## Recommended Go Structure for Phase 1
@@ -29,6 +30,9 @@ student-forms-orchestrator/
 │   ├── triage/
 │   │   ├── decision.go
 │   │   └── decision_test.go
+│   ├── reviewerqueue/
+│   │   ├── query.go
+│   │   └── query_test.go
 │   ├── platform/
 │   │   ├── database/
 │   │   └── httpserver/
@@ -47,11 +51,14 @@ student-forms-orchestrator/
 
 1. Write a failing unit test for transfer-credit validation.
 2. Write a failing unit test for transfer-credit route selection.
-3. Write a failing repository integration test that creates a submitted case and timeline event.
-4. Write a failing handler integration test for `POST /cases`.
-5. Write a failing handler integration test for `GET /cases/{id}/timeline`.
-6. Write a failing E2E test proving a learner submission appears in the reviewer queue.
-7. Only after those failures exist, add the smallest production code needed to pass them in order.
+3. Write failing guardrail tests proving the slice never auto-approves and never auto-denies.
+4. Write a failing unit test that a complete transfer-credit input creates a submitted case.
+5. Write a failing repository integration test that creates a submitted case and timeline event.
+6. Write a failing handler integration test for `POST /cases`.
+7. Write a failing handler integration test for `GET /cases/{id}/timeline`.
+8. Write a failing reviewer-queue query test.
+9. Write a failing E2E test proving a learner submission appears in the reviewer queue.
+10. Only after those failures exist, add the smallest production code needed to pass them in order.
 
 ## Build Tags
 
@@ -71,11 +78,15 @@ Use build tags to keep slow tests explicit.
 
 - [ ] `TestCreateTransferCreditCase_WithMissingPriorInstitution_ReturnsValidationError`
 - [ ] `TestTriageTransferCredit_WithCompleteInput_SuggestsRegistrarRoute`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoApproves`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoDenies`
+- [ ] `TestCreateTransferCreditCase_WithCompleteInput_CreatesSubmittedCase`
 - [ ] `TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase`
 - [ ] `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
 - [ ] `TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase`
 - [ ] `TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent`
-- [ ] `TestLearnerSubmission_TransferCredit_AppearsInReviewerQueue`
+- [ ] `TestReviewerQueue_NewTransferCreditCase_IsVisibleToStaff`
+- [ ] `TestE2ETransferCreditSubmission_AppearsInReviewerQueue`
 
 ### Green Implementation
 
@@ -83,10 +94,11 @@ Use build tags to keep slow tests explicit.
 - [ ] Create `CreateInput` for transfer-credit requests only.
 - [ ] Implement validation for the required transfer-credit fields.
 - [ ] Implement a deterministic route decision that returns `registrar_transfer_credit`.
+- [ ] Implement guardrail rules that block approval or denial automation.
 - [ ] Implement a repository that writes the case row and the submitted timeline event in one transaction.
 - [ ] Implement an HTTP handler for `POST /cases`.
 - [ ] Implement an HTTP handler for `GET /cases/{id}/timeline`.
-- [ ] Implement the smallest reviewer-queue read model needed by the E2E test.
+- [ ] Implement the smallest reviewer-queue query/read model needed by the E2E test.
 
 ### Refactor Tasks
 
@@ -101,6 +113,7 @@ Use build tags to keep slow tests explicit.
 - [ ] The transfer-credit slice passes unit, integration, and E2E tests.
 - [ ] The first reviewer-visible state is derived from `submitted` status plus `registrar_transfer_credit` route.
 - [ ] API handlers remain thin and are testable without starting a real server.
+- [ ] The slice proves no approval or denial path is automated.
 - [ ] No production code was added before its corresponding test failed.
 - [ ] Coverage for `internal/cases` is at least 90%.
 

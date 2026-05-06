@@ -18,7 +18,7 @@ Create one tested transfer-credit vertical slice first, then harden the platform
 
 - [ ] Write failing transfer-credit validation tests.
 - [ ] Write failing transfer-credit route tests.
-- [ ] Write failing duplicate submission test name and fixture.
+- [ ] Write failing complete-input case-creation test.
 - [ ] Write failing no-auto-approval test.
 - [ ] Write failing no-auto-denial test.
 
@@ -27,7 +27,6 @@ Create one tested transfer-credit vertical slice first, then harden the platform
 - [ ] Initialize the Go module and minimal package layout.
 - [ ] Implement transfer-credit required-field validation.
 - [ ] Implement deterministic route suggestion for `registrar_transfer_credit`.
-- [ ] Implement duplicate detection contract at the domain boundary.
 - [ ] Implement guardrail rules that force human review for approval or denial outcomes.
 
 ### Refactor
@@ -83,13 +82,11 @@ Create one tested transfer-credit vertical slice first, then harden the platform
 - [ ] Write failing reviewer queue visibility test.
 - [ ] Write failing learner-to-reviewer E2E transfer-credit test.
 - [ ] Write failing submitted-status timeline assertion in the E2E path.
-- [ ] Write failing duplicate submission API test if not already covered in Week 2.
 
 ### Green
 
 - [ ] Implement the minimal reviewer queue read model.
-- [ ] Expose the queue path needed for the demo.
-- [ ] Ensure duplicate submissions return the existing case.
+- [ ] Expose the queue query or view needed for the demo harness.
 - [ ] Add a minimal demo script or walkthrough data.
 
 ### Refactor

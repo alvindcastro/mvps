@@ -7,10 +7,10 @@ CI for the first implementation slice must prove the transfer-credit workflow fr
 ## Phase 1 Makefile Targets
 
 ```makefile
-.PHONY: test-unit test-integration test-e2e test-phase1 coverage-case-domain coverage-phase1 lint ci
+.PHONY: test-unit test-integration test-e2e test-phase1 coverage-case-domain coverage-phase1 ci-phase1 ci-full lint
 
 test-unit:
-	go test ./internal/cases ./internal/triage ./internal/platform/httpserver
+	go test ./internal/cases ./internal/triage ./internal/reviewerqueue ./internal/platform/httpserver
 
 test-integration:
 	go test -tags=integration ./internal/cases ./internal/platform/httpserver
@@ -31,18 +31,23 @@ coverage-phase1:
 lint:
 	golangci-lint run
 
-ci: lint test-phase1 coverage-case-domain coverage-phase1
+ci-phase1: test-phase1 coverage-case-domain
+
+ci-full: lint ci-phase1 coverage-phase1
 ```
 
 ## Phase 1 Pipeline Order
 
 1. Run unit tests for transfer-credit validation and route selection.
-2. Run integration tests for repository persistence and API handlers.
-3. Run the E2E learner-submission-to-reviewer-queue test.
-4. Run the `internal/cases` coverage gate at 90% or better.
-5. Run the overall slice coverage gate after the workflow is green.
+2. Run unit tests for the no-auto-approval and no-auto-denial guardrails.
+3. Run integration tests for repository persistence and API handlers.
+4. Run the E2E learner-submission-to-reviewer-queue test.
+5. Run the `internal/cases` coverage gate at 90% or better.
+6. Add lint and broader slice-coverage gates only after the canonical Phase 1 workflow is stable.
 
-## Coverage Gate Script
+## Post-Phase-1 Slice Coverage Script
+
+Use this broader slice gate only after the canonical Phase 1 workflow is stable and the case-domain 90% gate is already green.
 
 ```bash
 #!/usr/bin/env bash
@@ -123,9 +128,6 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Lint
-        run: make lint
-
       - name: Run transfer-credit unit tests
         run: make test-unit
 
@@ -137,9 +139,6 @@ jobs:
 
       - name: Run case domain coverage gate
         run: ./scripts/check-case-domain-coverage.sh
-
-      - name: Run slice coverage gate
-        run: ./scripts/check-coverage.sh
 ```
 
 ---
@@ -206,6 +205,37 @@ func TestTriageTransferCredit_WithCompleteInput_SuggestsRegistrarRoute(t *testin
 
     if result.Route != "registrar_transfer_credit" {
         t.Fatalf("expected registrar_transfer_credit, got %s", result.Route)
+    }
+}
+```
+
+## Guardrail Test
+
+```go
+package triage_test
+
+import (
+    "testing"
+
+    "github.com/yourname/student-forms-orchestrator/internal/triage"
+)
+
+func TestAdverseDecisionGuardrail_NeverAutoApproves(t *testing.T) {
+    t.Parallel()
+
+    result := triage.DecideTransferCreditRoute(triage.Input{
+        LearnerRef: "STU-300900111",
+        Term:       "Fall 2026",
+        Fields: map[string]string{
+            "prior_institution": "Example University",
+            "prior_course_code": "MGMT 101",
+            "target_program":    "Business Administration Diploma",
+            "requested_outcome": "approve this now",
+        },
+    })
+
+    if result.Route == "approved" {
+        t.Fatal("guardrail failure: route must not auto-approve")
     }
 }
 ```
@@ -326,7 +356,7 @@ package e2e_test
 
 import "testing"
 
-func TestLearnerSubmission_TransferCredit_AppearsInReviewerQueue(t *testing.T) {
+func TestE2ETransferCreditSubmission_AppearsInReviewerQueue(t *testing.T) {
     t.Parallel()
 
     t.Fatal("write the red E2E test before implementing the reviewer queue path")
@@ -343,9 +373,10 @@ Every pull request for the first slice must answer:
 - [ ] Did the failure happen before implementation?
 - [ ] Which layer changed: validation, routing, repository, API, or E2E path?
 - [ ] Was schema scope limited to `cases` and `status_events`?
-- [ ] Was API scope limited to `POST /cases` and `GET /cases/{id}/timeline`?
+- [ ] Was API scope limited to `POST /cases` and `GET /cases/{id}/timeline`, with reviewer visibility proven through the queue query/read model?
+- [ ] Did the guardrail tests prove no auto-approval and no auto-denial?
 - [ ] Did unit, integration, and E2E tests pass?
-- [ ] Did the slice coverage gate pass?
+- [ ] Did the `internal/cases` 90% coverage gate pass?
 - [ ] Were the Phase 1 docs updated?
 
 ## Deferred CI Expansion

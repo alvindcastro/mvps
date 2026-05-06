@@ -30,28 +30,27 @@ Not allowed:
 
 Phase 1 starts from the transfer-credit submission path, not from open-ended classification.
 
-The first runnable slice must prove deterministic routing, completeness checks, duplicate handling, and no-decision guardrails from structured transfer-credit input plus labelled fixtures.
+The first runnable slice must prove deterministic routing, required-field validation, reviewer visibility, and no-decision guardrails from structured transfer-credit input plus labelled fixtures.
+
+Defer duplicate handling, extraction conflicts, unsupported mappings, and low-confidence fallbacks until later phases unless `01-tdd-product-scope-and-phases.md` explicitly expands the slice.
 
 ### Route Outcomes Allowed in Phase 1
 
 | Condition | Expected Action |
 |---|---|
 | Complete transfer-credit request | Route to `registrar_transfer_credit` |
-| Missing required field | Return `needs_more_information` |
-| Conflicting entered and extracted values | Return `human_review_required` |
-| Unsupported or low-confidence extraction | Return `manual_triage` |
-| Learner asks for approval, denial, or outcome | Return `human_review_required` |
-| Duplicate submission | Return existing case |
+| Missing required field | Return a validation error before case creation |
+| Learner asks for approval or denial outcome | Return `human_review_required` |
+| Any automated approval path | Disallowed |
+| Any automated denial path | Disallowed |
 
 ### Red Tests
 
 - [ ] `TestTransferCreditTriage_CompleteStructuredInput_SuggestsRegistrarTransferCredit`
-- [ ] `TestTransferCreditTriage_MissingPriorInstitution_ReturnsNeedsMoreInformation`
-- [ ] `TestTransferCreditTriage_MissingPriorCourseCode_ReturnsNeedsMoreInformation`
-- [ ] `TestTransferCreditTriage_ConflictingCourseCode_RequiresHumanReview`
-- [ ] `TestTransferCreditTriage_UnsupportedInstitutionMapping_RoutesManualTriage`
+- [ ] `TestTransferCreditTriage_MissingPriorInstitution_ReturnsValidationError`
 - [ ] `TestTransferCreditTriage_AdverseDecisionRequest_RequiresHumanReview`
-- [ ] `TestTransferCreditTriage_DuplicateSubmission_ReturnsExistingCase`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoApproves`
+- [ ] `TestAdverseDecisionGuardrail_NeverAutoDenies`
 
 ### Green Tasks
 
@@ -60,7 +59,7 @@ The first runnable slice must prove deterministic routing, completeness checks, 
 - [ ] Implement deterministic route decision rules.
 - [ ] Implement guardrail rules for no auto-approval and no auto-denial.
 - [ ] Return route reason codes and missing-field list.
-- [ ] Return a reviewer-safe explanation for every non-happy-path result.
+- [ ] Return a reviewer-safe explanation for every guardrail-triggered result.
 
 ### Refactor Tasks
 
@@ -72,9 +71,9 @@ The first runnable slice must prove deterministic routing, completeness checks, 
 ### Acceptance Criteria
 
 - [ ] A complete transfer-credit request deterministically routes to `registrar_transfer_credit`.
-- [ ] Missing information never reaches the happy-path queue.
-- [ ] Conflicts and learner-impacting outcomes always require human review.
-- [ ] Duplicate detection returns the existing case rather than creating a new route.
+- [ ] Missing required information never reaches the happy-path queue.
+- [ ] Learner-impacting approval or denial outcomes always require human review.
+- [ ] No approval or denial outcome is automated anywhere in the slice.
 - [ ] No live model is required for CI or the first demo slice.
 
 ---

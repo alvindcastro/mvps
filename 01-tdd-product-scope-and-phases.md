@@ -152,10 +152,10 @@ And no approval or denial decision is made
 
 ### Product Deliverables
 
-- [ ] One canonical transfer-credit scenario is documented and treated as the Phase 1 demo path.
-- [ ] Phase 1 scope boundary is documented and excludes other workflow types.
-- [ ] Acceptance criteria name the exact behaviours required to demo the slice.
-- [ ] README points to the same Phase 1 demo path.
+- [x] One canonical transfer-credit scenario is documented and treated as the Phase 1 demo path.
+- [x] Phase 1 scope boundary is documented and excludes other workflow types.
+- [x] Acceptance criteria name the exact behaviours required to demo the slice.
+- [x] README points to the same Phase 1 demo path.
 
 ### Test Deliverables
 
@@ -178,6 +178,8 @@ And no approval or denial decision is made
 
 - [ ] Write failing unit test for transfer-credit validation.
 - [ ] Write failing unit test for route selection.
+- [ ] Write failing unit test for no auto-approval guardrail.
+- [ ] Write failing unit test for no auto-denial guardrail.
 - [ ] Write failing repository test for case creation.
 - [ ] Write failing API test for `POST /cases`.
 - [ ] Write failing API test for `GET /cases/{id}/timeline`.

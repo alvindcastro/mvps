@@ -15,21 +15,21 @@ Use it to keep the first implementation slice narrow:
 
 ### Included
 
-- Transfer-credit intake validation
-- Transfer-credit route suggestion
-- Case creation in PostgreSQL
-- Submitted timeline event
-- `POST /cases`
-- `GET /cases/{id}/timeline`
-- Reviewer queue visibility for newly created transfer-credit cases
-- Synthetic fixtures and demo walkthrough
+- Create a transfer-credit case from a synthetic learner submission
+- Validate required transfer-credit fields
+- Suggest `registrar_transfer_credit`
+- Persist the case and initial submitted timeline event
+- Show the case in a reviewer queue query or read model
+- Show the learner-facing submitted status timeline
 
 ### Excluded Until Phase 2+
 
 - Prerequisite waiver
 - Refund or withdrawal
+- Duplicate detection and idempotency
 - Real document ingestion
 - Live AI provider calls
+- Low-confidence or unsupported extraction fallbacks
 - Real SIS, CRM, LMS, or identity integrations
 - Reviewer decisioning beyond queue visibility
 
@@ -39,12 +39,15 @@ Write and observe failures in this order:
 
 1. `TestCreateTransferCreditCase_WithMissingPriorInstitution_ReturnsValidationError`
 2. `TestTriageTransferCredit_WithCompleteInput_SuggestsRegistrarRoute`
-3. `TestCaseRepository_CreateAndGet_RoundTrip`
-4. `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
-5. `TestPOSTCases_ValidTransferCredit_Returns201AndCaseNumber`
-6. `TestGETTimeline_ForNewCase_ReturnsSubmittedEvent`
-7. `TestReviewerQueue_NewTransferCreditCase_IsVisibleToStaff`
-8. `TestE2ETransferCreditSubmission_AppearsInReviewerQueue`
+3. `TestAdverseDecisionGuardrail_NeverAutoApproves`
+4. `TestAdverseDecisionGuardrail_NeverAutoDenies`
+5. `TestCreateTransferCreditCase_WithCompleteInput_CreatesSubmittedCase`
+6. `TestCaseRepository_CreateTransferCreditCase_PersistsSubmittedCase`
+7. `TestStatusTimeline_OnCaseCreation_ContainsSubmittedEvent`
+8. `TestPOSTCases_ValidTransferCredit_Returns201AndSubmittedCase`
+9. `TestGETTimeline_ForNewTransferCreditCase_ReturnsSubmittedEvent`
+10. `TestReviewerQueue_NewTransferCreditCase_IsVisibleToStaff`
+11. `TestE2ETransferCreditSubmission_AppearsInReviewerQueue`
 
 Do not pull later tests forward unless an earlier red test proves the next production code cannot be reached.
 
@@ -66,7 +69,7 @@ Do not pull later tests forward unless an earlier red test proves the next produ
 
 - Create the failing repository round-trip test against PostgreSQL.
 - Add only `cases` and `status_events` support.
-- Enforce duplicate protection with an idempotency key before expanding schema.
+- Keep the schema limited to case creation and the initial submitted timeline event.
 
 ### Step 4 - API Red
 
@@ -98,8 +101,7 @@ Create these fixtures before implementation expands:
 
 - `transfer-credit-complete.json`
 - `transfer-credit-missing-prior-institution.json`
-- `transfer-credit-duplicate.json`
-- `transfer-credit-low-confidence.json`
+- `transfer-credit-adverse-decision-request.json`
 
 Each fixture should carry:
 
@@ -109,6 +111,9 @@ Each fixture should carry:
 - expected route
 - expected missing fields
 - expected timeline events
+- expected guardrail outcome when applicable
+
+Use `testdata/scenarios/README.md` as the fixture contract and naming source of truth.
 
 ## Demo Path
 
@@ -117,7 +122,7 @@ The README demo path for Phase 1 should stay limited to:
 1. Submit a complete synthetic transfer-credit form.
 2. Show the created case response.
 3. Fetch the case timeline and show the submitted event.
-4. Open the reviewer queue and show the new case.
+4. Run the reviewer queue query/read model and show the new case.
 5. Call out that no automated approval or denial occurred.
 
 ## Evidence Required Before Phase 1 Is Done
@@ -127,6 +132,7 @@ The README demo path for Phase 1 should stay limited to:
 - The route suggestion is deterministic and explainable.
 - Timeline writes are append-only and transactional.
 - The reviewer queue shows the case without making a learner-affecting decision.
+- Guardrail tests prove the slice never auto-approves or auto-denies.
 - README demo instructions match the implemented flow.
 
 ## Documentation Sync Checklist
@@ -140,3 +146,5 @@ Update these docs whenever the slice changes:
 - `04-tdd-ai-triage-workflow-and-rules.md`
 - `07-tdd-30-60-90-day-build-plan.md`
 - `08-tdd-ci-makefile-and-test-skeletons.md`
+- `10-tdd-phase-1-traceability-matrix.md`
+- `testdata/scenarios/README.md`
